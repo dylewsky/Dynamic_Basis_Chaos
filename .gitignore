@@ -1,0 +1,12 @@
+*.avi
+*.mat
+*.asv
+*.pdf
+*.eps
+*.png
+*.fig
+*.aux
+*.log
+*.synctex.gz
+
+lyarosenstein.m
