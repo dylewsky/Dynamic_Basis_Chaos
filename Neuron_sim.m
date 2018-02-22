@@ -4,8 +4,8 @@ clear variables; close all; clc
 
 rng(1); %fix RNG seed
 
-N = 3200; %number of oscillators
-K = 80;
+N = 320; %number of oscillators
+K = 10;
 
 C = zeros(N);
 C(randperm(numel(C), N*K)) = 1;
