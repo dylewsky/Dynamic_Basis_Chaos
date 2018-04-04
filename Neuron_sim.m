@@ -10,7 +10,9 @@ K = 10;
 C = zeros(N);
 C(randperm(numel(C), N*K)) = 1;
 
-tspan = [0 10];
+tspan = [0 5];
+
+opts = odeset('RelTol',1e-10);
 
 % C = randi(2,N) - 1; %connections
 J0 = 10;
@@ -22,11 +24,11 @@ phi = @(h) (1/2) * (1 + erf(h/sqrt(2)));
 dhdt = @(h, I, J, tau) (1/tau) * (-h + I + J*phi(h));
 
 h0 = rand(N,1);
-[t, h] = ode45(@(t,h)dhdt(h,I,J,tau),tspan,h0);
+[t, h] = ode45(@(t,h)dhdt(h,I,J,tau),tspan,h0,opts);
 
 plot(t,h(:,1:3))
 
-tStep = 2*mean(diff(t));
+tStep = mean(diff(t));
 nSteps = ceil(tspan(2)/tStep);
 tN = 0:tStep:tspan(2);
 tN = tN(1:end-1); %match to nSteps
@@ -55,7 +57,7 @@ f = @(x,log_thresh,log_k,log_amp) sum(log_amp./(1 + exp(-log_k*(x-log_thresh))))
 dxdt = @(x,Gamma,sigma,log_thresh,log_k,log_amp) -Gamma*x + sigma*f(x,log_thresh,log_k,log_amp) - c;
 x0 = rand(N,1);
 
-[t, x] = ode45(@(t,x)dxdt(x,Gamma,sigma,log_thresh,log_k,log_amp),tspan,x0);
+[t, x] = ode45(@(t,x)dxdt(x,Gamma,sigma,log_thresh,log_k,log_amp),tspan,x0,opts);
 
 plot(t,x)
 
