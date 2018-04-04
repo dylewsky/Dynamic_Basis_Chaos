@@ -1,6 +1,13 @@
 clear variables; close all; clc
 
-load neuron_sim_data.mat;
+% dataLabel = 'Kuramoto';
+% windows = [500 1000 1500]; %Kuramoto
+
+dataLabel = 'Neuron';
+windows = [100 250 500]; %Neuron
+
+infile = [dataLabel '_sim_data.mat'];
+load(infile);
 h = h.';
 nSteps = size(h,2);
 global_meansub = 1; %subtract global mean rather than each individual window mean
@@ -11,7 +18,6 @@ if global_meansub == 1
 end
 
 % windows = floor(10.^(1.25:0.5:2.75));
-windows = [100 250 500];% 200 400];
 stepSize = 5;
 
 maxSlide = floor((nSteps - min(windows))/stepSize);
@@ -43,14 +49,16 @@ for n = 1:length(windows)
     end
 %     title(['Spectra for ' num2str(wSteps*(t(2)-t(1))) ' Second Window'])
 end
-save('Neuron_SVD_res.mat','SVD_res','windows','stepSize','r');
+outFile = [dataLabel '_SVD_res.mat'];
+save(outFile,'SVD_res','windows','stepSize','r');
 
 %% Compare SVD Spectra
 addpath(genpath('kakearney-boundedline'));
 
-allMeans = zeros(length(windows),min(windows)); %truncate all spectra to length of shortest
+sLength = min([min(windows) size(h,1)]); %min # of values in s
+allMeans = zeros(length(windows),sLength); %truncate all spectra to length of shortest
 allStds = zeros(size(allMeans));
-b = zeros(min(windows),1,length(windows));
+b = zeros(sLength,1,length(windows));
 
 for n = 1:length(windows)
     wSteps = windows(n);
@@ -64,9 +72,9 @@ for n = 1:length(windows)
     
     mean_S = mean(all_S,2);
     std_S = std(all_S,0,2);
-    allMeans(n,:) = mean_S(1:min(windows));
-    allStds(n,:) = std_S(1:min(windows));
-    b(:,1,n) = std_S(1:min(windows));
+    allMeans(n,:) = mean_S(1:sLength);
+    allStds(n,:) = std_S(1:sLength);
+    b(:,1,n) = std_S(1:sLength);
 end
 
 xBounds = [1 10];
@@ -74,14 +82,14 @@ xBounds = [1 10];
 % allStds = reshape(allStds,length(windows),1,min(windows)); %add singleton dimension
 figure('Position',[200 200 1000 400])
 subplot(1,3,1)
-[h1, hp] = boundedline(1:min(windows),allMeans,b,'o');
+[h1, hp] = boundedline(1:sLength,allMeans,b,'o');
 hold on
 plot([r r],[0 1],'r--')
 legend(string(windows),'Location','best');
 title('SVD Spectra by Window Size')
 xlim(xBounds);
 subplot(1,3,2)
-[h1L, hpL] = boundedline(1:min(windows),allMeans,b,'o');
+[h1L, hpL] = boundedline(1:sLength,allMeans,b,'o');
 set(gca,'YScale','log')
 hold on
 plot([r r],ylim,'r--')
@@ -127,7 +135,8 @@ end
 
 %% Moving Window SVD Reconstruction
 
-tBounds = [1 2]; %default plot limits
+% tBounds = [1 2]; %default plot limits
+tBounds = [t(1000) t(3000)];
 
 h_recons = cell(length(windows),1); 
 V_full_all = cell(length(windows),1);
