@@ -16,8 +16,8 @@ if global_meansub == 1
 end
 
 % windows = floor(10.^(1.25:0.5:2.75));
-windows = [50 100 200];% 200 400];
-stepSize = 5;
+windows = [50 100 200 2000];% 200 400];
+stepSize = 1;
 
 maxSlide = floor((nSteps - min(windows))/stepSize);
 SVD_res = cell(length(windows),maxSlide);
@@ -104,7 +104,7 @@ plot(cumsum(allMeans.'),'o-')
 % hold on
 % plot([r r],[0 1],'r--')
 hold on
-plot(1:size(allMeans,2),ones(length(allMeans),1),'k:');
+plot(1:size(allMeans,2),ones(size(allMeans,2),1),'k:');
 xlim(xBounds);
 xlabel('Mode #');
 ylabel('\Sigma\sigma');
@@ -145,6 +145,8 @@ tBounds = [1 5]; %default plot limits
 h_recons = cell(length(windows),1); 
 V_full_all = cell(length(windows),1);
 V_full_discr_all = cell(length(windows),1);
+x_full_discr_all = cell(length(windows),1);
+t_discr_all = cell(length(windows),1);
 allModes = cell(length(windows),1);
 windMids_all = cell(length(windows),1);
 
@@ -155,6 +157,8 @@ for n = 1:length(windows)
     h_recon = zeros(size(h));
     V_full = zeros(r,length(t)); %moving weighted average of mode projections
     V_full_discr = zeros(nSlide,r); %mean values of mode projections for each window
+    x_full_discr = zeros(nSlide,size(h,1)); %mean values of mode projections for each window
+    t_discr = zeros(1,nSlide);
     wModes = zeros(nSlide,r,size(h,1)); %window step #, mode #, mode vector
     wSVs = zeros(nSlide,r); %singular values over time
     
@@ -164,6 +168,8 @@ for n = 1:length(windows)
     
     for k = 1:nSlide
         thisWind = (k-1)*stepSize + 1 :(k-1)*stepSize + wSteps;
+        t_discr(k) = t(thisWind(end));
+        x_full_discr(k,:) = h(:,thisWind(end)).';
         windMid = (k-1)*stepSize + floor(wSteps/2);
         windMids(k) = windMid;
         V_wind = SVD_res{n,k}.V(:,1:r);
@@ -195,11 +201,14 @@ for n = 1:length(windows)
 %     if global_meansub == 1
 %         h_recon = h_recon + repmat(h_const,1,size(h,2));
 %     end
+
     V_full = V_full./repmat(wCount,r,1);
     
     h_recons{n} = h_recon;
+    t_discr_all{n} = t_discr;
     V_full_all{n} = V_full;
     V_full_discr_all{n} = V_full_discr;
+    x_full_discr_all{n} = x_full_discr;
     allModes{n} = wModes;
     windMids_all{n} = windMids;
     
@@ -243,6 +252,9 @@ for n = 1:length(windows)
     set(gca,'YTickLabel', {'-\pi','-\pi/2','0','\pi/2','\pi'});
 end
 
+outFile = 'Lorenz_sindy_input.mat';
+save(outFile, 'V_full_discr_all', 'x_full_discr_all','t_discr_all','windows');
+
 %% Mode Angles
 
 % for n = 1:length(windows)
@@ -261,7 +273,7 @@ end
 %     title(['Rotation Angles for ' num2str(wSteps) '-Step Window'])
 % end
 
-% return;
+return;
 
 %% Animate results
 % dims = randperm(size(h,1),3); %pick some dimensions to display
@@ -271,7 +283,7 @@ sAlpha = 0.1; %transparency of backdrop attractor
 
 
 figure('Position',[100 50 1200 650])
-n = 1; %which window size to show
+n = 4; %which window size to show
 wSteps = windows(n);
 windMids = windMids_all{n};
 dispModes = allModes{n}(:,:,dims); %step #, mode #, mode coord

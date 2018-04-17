@@ -4,7 +4,9 @@ clear variables; close all; clc
 % windows = [500 1000 1500]; %Kuramoto
 
 dataLabel = 'Neuron';
-windows = [100 250 500]; %Neuron
+windows = [10 50 100 250 500]; %Neuron
+
+rerun_SVD = 0; %if 0, just load SVD results from file
 
 infile = [dataLabel '_sim_data.mat'];
 load(infile);
@@ -23,35 +25,40 @@ stepSize = 5;
 maxSlide = floor((nSteps - min(windows))/stepSize);
 SVD_res = cell(length(windows),maxSlide);
 
-r = 3;
+r = 4;
 
-for n = 1:length(windows)
-    wSteps = windows(n);
-    nSlide = floor((nSteps - wSteps)/stepSize);
-    disp(['Running n = ' num2str(n)])
-%     figure
-    for k = 1:nSlide
-        thisWind = (k-1)*stepSize + 1 :(k-1)*stepSize + wSteps;
-        hWind = h(:,thisWind);
-        tWind = t(thisWind);
-        if global_meansub == 0
-            cWind = mean(hWind,2);
-            hWind = hWind - repmat(cWind,1,length(thisWind));
-            SVD_res{n,k}.cWind = cWind;
+if rerun_SVD == 1
+
+    for n = 1:length(windows)
+        wSteps = windows(n);
+        nSlide = floor((nSteps - wSteps)/stepSize);
+        disp(['Running n = ' num2str(n)])
+    %     figure
+        for k = 1:nSlide
+            thisWind = (k-1)*stepSize + 1 :(k-1)*stepSize + wSteps;
+            hWind = h(:,thisWind);
+            tWind = t(thisWind);
+            if global_meansub == 0
+                cWind = mean(hWind,2);
+                hWind = hWind - repmat(cWind,1,length(thisWind));
+                SVD_res{n,k}.cWind = cWind;
+            end
+
+            [Uw,Sw,Vw] = svd(hWind,'econ');
+            SVD_res{n,k}.U = Uw(:,1:r);
+            SVD_res{n,k}.V = Vw(:,1:r);
+            SVD_res{n,k}.S = diag(Sw);
+    %         semilogy(diag(Sw));
+    %         hold on
         end
-        
-        [Uw,Sw,Vw] = svd(hWind,'econ');
-        SVD_res{n,k}.U = Uw(:,1:r);
-        SVD_res{n,k}.V = Vw(:,1:r);
-        SVD_res{n,k}.S = diag(Sw);
-%         semilogy(diag(Sw));
-%         hold on
+    %     title(['Spectra for ' num2str(wSteps*(t(2)-t(1))) ' Second Window'])
     end
-%     title(['Spectra for ' num2str(wSteps*(t(2)-t(1))) ' Second Window'])
+    outFile = [dataLabel '_SVD_res.mat'];
+    save(outFile,'SVD_res','windows','stepSize','r');
+else
+    inFile = [dataLabel '_SVD_res.mat'];
+    load(inFile);
 end
-outFile = [dataLabel '_SVD_res.mat'];
-save(outFile,'SVD_res','windows','stepSize','r');
-
 %% Compare SVD Spectra
 addpath(genpath('kakearney-boundedline'));
 
@@ -141,6 +148,7 @@ tBounds = [t(1000) t(3000)];
 h_recons = cell(length(windows),1); 
 V_full_all = cell(length(windows),1);
 V_full_discr_all = cell(length(windows),1);
+t_discr_all = cell(length(windows),1);
 allModes = cell(length(windows),1);
 windMids_all = cell(length(windows),1);
 
@@ -151,6 +159,7 @@ for n = 1:length(windows)
     h_recon = zeros(size(h));
     V_full = zeros(r,length(t)); %moving weighted average of mode projections
     V_full_discr = zeros(nSlide,r); %mean values of mode projections for each window
+    t_discr = zeros(1,nSlide);
     wModes = zeros(nSlide,r,size(h,1)); %window step #, mode #, mode vector
     wSVs = zeros(nSlide,r); %singular values over time
     
@@ -160,6 +169,7 @@ for n = 1:length(windows)
     
     for k = 1:nSlide
         thisWind = (k-1)*stepSize + 1 :(k-1)*stepSize + wSteps;
+        t_discr(k) = t(thisWind(end));
         windMid = (k-1)*stepSize + floor(wSteps/2);
         windMids(k) = windMid;
         V_wind = SVD_res{n,k}.V(:,1:r);
@@ -183,6 +193,7 @@ for n = 1:length(windows)
     V_full = V_full./repmat(wCount,r,1);
     
     h_recons{n} = h_recon;
+    t_discr_all{n} = t_discr;
     V_full_all{n} = V_full;
     V_full_discr_all{n} = V_full_discr;
     allModes{n} = wModes;
@@ -215,23 +226,26 @@ for n = 1:length(windows)
     xlim(tBounds);
 end
 
+outFile = [dataLabel '_sindy_input.mat'];
+save(outFile, 'V_full_discr_all','t_discr_all','windows');
+
 %% Mode Angles
 
-for n = 1:length(windows)
-    wSteps = windows(n);
-    nSlide = floor((nSteps - wSteps)/stepSize);
-    mAngles = zeros(nSlide-1,r);
-    for k = 1:nSlide-1
-        for j = 1:r
-            u1 = SVD_res{n,k}.U(:,j);
-            u2 = SVD_res{n,k+1}.U(:,j);
-            mAngles(k,j) = acos(dot(u1,u2));
-        end
-    end
-    figure
-    plot(mAngles)
-    title(['Rotation Angles for ' num2str(wSteps) '-Step Window'])
-end
+% for n = 1:length(windows)
+%     wSteps = windows(n);
+%     nSlide = floor((nSteps - wSteps)/stepSize);
+%     mAngles = zeros(nSlide-1,r);
+%     for k = 1:nSlide-1
+%         for j = 1:r
+%             u1 = SVD_res{n,k}.U(:,j);
+%             u2 = SVD_res{n,k+1}.U(:,j);
+%             mAngles(k,j) = acos(dot(u1,u2));
+%         end
+%     end
+%     figure
+%     plot(mAngles)
+%     title(['Rotation Angles for ' num2str(wSteps) '-Step Window'])
+% end
 
 return;
 
@@ -377,3 +391,18 @@ for k = 2:nSlide
     
     pause(0.1);
 end
+
+%% Compare time series in SVD basis
+figure('Position',[50 50 1200 640])
+for n = 1:length(windows)
+    V = V_full_discr_all{n};
+    t = t_discr_all{n};
+    for j = 1:r
+        subplot(r,1,j)
+        plot(t,V(:,j),'DisplayName',[num2str(windows(n)) '-step window'])
+        hold on
+        legend('Location','eastoutside');
+        ylabel(['SVD Mode ' num2str(j)])
+    end
+end
+

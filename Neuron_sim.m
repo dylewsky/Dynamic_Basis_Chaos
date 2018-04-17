@@ -5,18 +5,18 @@ clear variables; close all; clc
 rng(1); %fix RNG seed
 
 N = 320; %number of oscillators
-K = 10;
+K = 80; %avg # connections per node
 
 C = zeros(N);
 C(randperm(numel(C), N*K)) = 1;
 
-tspan = [0 5];
+tspan = [0 10];
 
 opts = odeset('RelTol',1e-10);
 
 % C = randi(2,N) - 1; %connections
-J0 = 10;
-I0 = 2;
+J0 = 10; %Connection strength
+I0 = 2; %Constant input
 J = -(J0/sqrt(K))*C;
 I = sqrt(K)*I0;
 tau = 0.01;
