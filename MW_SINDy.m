@@ -5,11 +5,11 @@ addpath('../sparsedynamics/utils/')
 % dataLabel = 'Kuramoto';
 % windows = [500 1000 1500]; %Kuramoto
 
-% dataLabel = 'Neuron';
-% inFile = [dataLabel '_sindy_input.mat'];
-
-dataLabel = 'Lorenz';
+dataLabel = 'Neuron';
 inFile = [dataLabel '_sindy_input.mat'];
+
+% dataLabel = 'Lorenz';
+% inFile = [dataLabel '_sindy_input.mat'];
 
 load(inFile);
 
@@ -23,8 +23,8 @@ nTrunc = 400; %number of steps to chop off beginning to avoid transients
 sindy_res = cell(length(windows),1);
 
 for wn = 1:length(windows)
-%     x = V_full_discr_all{wn}.';
-    x = x_full_discr_all{wn}.'; %use raw data on Lorenz system
+    x = V_full_discr_all{wn}.';
+%     x = x_full_discr_all{wn}.'; %use raw data on Lorenz system
     x = x(1:nVars,nTrunc+1:end);
     n = nVars;
 
@@ -75,8 +75,8 @@ for wn = 1:length(windows)
     m = size(Theta,2);
 
     %% compute Sparse regression: sequential least squares
-%     lambdas = 10.^(3 : 0.2 : 6);
-    lambdas = 10.^(-1:0.1:1);
+    lambdas = 10.^(0 : 0.1 : 3);
+%     lambdas = 10.^(-1:0.05:1);
     coeff_cts = zeros(size(lambdas));
     for lj = 1:length(lambdas)
         testLambda = lambdas(lj);
@@ -176,7 +176,7 @@ subplot(2,1,1)
 plot(tA,xA_rescale,'LineWidth',1)
 title('Input Data (Ground Truth)')% \epsilon = 0.01)')
 subplot(2,1,2)
-plot(tB,xB_rescale,'LineWidth',2)
+plot(tB,xB_rescale,'LineWidth',1)
 title(['SINDy Result'])% (Obtained \epsilon = ' num2str(obtained_eps) ')'])
 
 % plot(test_t,test_x)

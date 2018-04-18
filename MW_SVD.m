@@ -10,6 +10,7 @@ rerun_SVD = 0; %if 0, just load SVD results from file
 
 infile = [dataLabel '_sim_data.mat'];
 load(infile);
+tfull = t;
 h = h.';
 nSteps = size(h,2);
 global_meansub = 1; %subtract global mean rather than each individual window mean
@@ -25,10 +26,11 @@ stepSize = 5;
 maxSlide = floor((nSteps - min(windows))/stepSize);
 SVD_res = cell(length(windows),maxSlide);
 
-r = 4;
 
 if rerun_SVD == 1
 
+    r = 3;
+    
     for n = 1:length(windows)
         wSteps = windows(n);
         nSlide = floor((nSteps - wSteps)/stepSize);
@@ -115,31 +117,34 @@ hold off
 title('SVD Spectra - Cumulative Sums')
 
 %% Correct for mode sign flips
+flipRegister = zeros(nSlide,r); %track where sign flips have taken place
+cumFlip = ones(1,r); %cumulative sign change for each mode
 for n = 1:length(windows)
     wSteps = windows(n);
     nSlide = floor((nSteps - wSteps)/stepSize);
     V_old = SVD_res{n,1}.V;
-    U_old = SVD_res{n,1}.U;
+    U_old = SVD_res{n,1}.U; 
     for k = 2:nSlide
         V_wind = SVD_res{n,k}.V;
+        V_wind = V_wind.*repmat(cumFlip,wSteps,1); %apply cumulative flip up to this point
         U_wind = SVD_res{n,k}.U;
+        U_wind = U_wind.*repmat(cumFlip,size(h,1),1);
         updateRes = 0;
         for j = 1:r
             if norm(U_wind(:,j) - U_old(:,j)) > norm(U_wind(:,j) + U_old(:,j))
                 U_wind(:,j) = -U_wind(:,j);
                 V_wind(:,j) = -V_wind(:,j);
-                updateRes = 1;
+                flipRegister(k,j) = 1;
+                cumFlip(j) = -cumFlip(j);
+                % disp(['Sign flip on window [' num2str([tfull((k-1)*stepSize + 1) ,tfull((k-1)*stepSize + wSteps)]) ']']);
             end
         end
-        if updateRes == 1
-            SVD_res{n,k}.V = V_wind;
-            SVD_res{n,k}.U = U_wind;
-        end
+        SVD_res{n,k}.V = V_wind;
+        SVD_res{n,k}.U = U_wind;
         V_old = V_wind;
         U_old = U_wind;
     end
 end
-
 %% Moving Window SVD Reconstruction
 
 % tBounds = [1 2]; %default plot limits
@@ -148,10 +153,11 @@ tBounds = [t(1000) t(3000)];
 h_recons = cell(length(windows),1); 
 V_full_all = cell(length(windows),1);
 V_full_discr_all = cell(length(windows),1);
+U_full_discr_all = cell(length(windows),1);
+S_discr_all = cell(length(windows),1);
 t_discr_all = cell(length(windows),1);
 allModes = cell(length(windows),1);
 windMids_all = cell(length(windows),1);
-
 for n = 1:length(windows)
     wSteps = windows(n);
     nSlide = floor((nSteps - wSteps)/stepSize);
@@ -159,13 +165,15 @@ for n = 1:length(windows)
     h_recon = zeros(size(h));
     V_full = zeros(r,length(t)); %moving weighted average of mode projections
     V_full_discr = zeros(nSlide,r); %mean values of mode projections for each window
+    U_full_discr = zeros(nSlide,r,size(h,1)); %window #, mode #, mode vector
     t_discr = zeros(1,nSlide);
+    S_discr = zeros(nSlide,r);
     wModes = zeros(nSlide,r,size(h,1)); %window step #, mode #, mode vector
     wSVs = zeros(nSlide,r); %singular values over time
     
     wCount = zeros(size(t)); %count # windows contributing to each step
     windMids = zeros(nSlide,1);
-    disp(['Running n = ' num2str(n)])
+    disp(['Reconstructing n = ' num2str(n)])
     
     for k = 1:nSlide
         thisWind = (k-1)*stepSize + 1 :(k-1)*stepSize + wSteps;
@@ -184,6 +192,8 @@ for n = 1:length(windows)
         wModes(k,:,:) = U_wind.';
 %         V_full_discr(k,:) = mean(V_wind,1);
         V_full_discr(k,:) = V_wind(end,:);
+        U_full_discr(k,:,:) = U_wind.';
+        S_discr(k,:) = S_wind;
         wSVs(k,:) = S_wind;
     end
     h_recon = h_recon./repmat(wCount,size(h,1),1);
@@ -196,6 +206,8 @@ for n = 1:length(windows)
     t_discr_all{n} = t_discr;
     V_full_all{n} = V_full;
     V_full_discr_all{n} = V_full_discr;
+    U_full_discr_all{n} = U_full_discr;
+    S_discr_all{n} = S_discr;
     allModes{n} = wModes;
     windMids_all{n} = windMids;
     
@@ -394,11 +406,20 @@ end
 
 %% Compare time series in SVD basis
 figure('Position',[50 50 1200 640])
+
+weight_sigma = 0; %weight using (dynamic) singular values
+
 for n = 1:length(windows)
     V = V_full_discr_all{n};
+    if weight_sigma == 1
+        S = S_discr_all{n};
+        V = V.*S;
+    end
     t = t_discr_all{n};
     for j = 1:r
         subplot(r,1,j)
+%         plot(t,zeros(size(t)),'Color',[0.9 0.9 0.9],'LineWidth',0.1)
+%         hold on
         plot(t,V(:,j),'DisplayName',[num2str(windows(n)) '-step window'])
         hold on
         legend('Location','eastoutside');
@@ -406,3 +427,17 @@ for n = 1:length(windows)
     end
 end
 
+%% Visualize Mode Coordinates Over Time
+someDims = randi(size(h,1),3,1);
+% for n = 1:length(windows)
+for n = 4
+    U = U_full_discr_all{n};
+    t = t_discr_all{n};
+    figure
+    for j = 1:r
+        subplot(r,1,j)
+        plot(t,squeeze(U(:,j,someDims)))
+        title(['Mode ' num2str(j) ' Over Time (Proj. onto a few random dimensions) -- ' num2str(windows(n)) '-Step Window']);
+        legend({['Coordinate #' num2str(someDims(1))], ['Coordinate #' num2str(someDims(2))], ['Coordinate #' num2str(someDims(3))]},'Location','eastoutside')
+    end
+end
