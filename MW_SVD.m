@@ -4,8 +4,8 @@ clear variables; close all; clc
 % windows = [10 50 100 250]; %Kuramoto
 % activeWindows = 2;
 
-% dataLabel = 'Neuron';
-% windows = [10 50 100 250 500]; %Neuron
+dataLabel = 'Neuron';
+windows = [10 50 100 250 500]; %Neuron
 
 % dataLabel = 'Neuron640';
 % windows = [10 50 100 250 500]; %Neuron640
@@ -31,7 +31,7 @@ maxSlide = floor((nSteps - min(windows))/stepSize);
 SVD_res = cell(length(windows),maxSlide);
 
 
-if rerun_SVD == 0
+if rerun_SVD == 1
 
     r = 3;
     
