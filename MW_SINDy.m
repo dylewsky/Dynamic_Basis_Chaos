@@ -1,11 +1,14 @@
 clear variables; close all; clc
 
-addpath('../sparsedynamics/utils/')
+addpath('utils')
 
 % dataLabel = 'Kuramoto';
 % windows = [500 1000 1500]; %Kuramoto
 
-dataLabel = 'Neuron';
+% dataLabel = 'Neuron';
+% inFile = [dataLabel '_sindy_input.mat'];
+
+dataLabel = 'Neuron640';
 inFile = [dataLabel '_sindy_input.mat'];
 
 % dataLabel = 'Lorenz';
@@ -15,14 +18,22 @@ load(inFile);
 
 nVars = 3;
 
-polyorder = 2;
+polyorder = 1:3;
 usesine = 0;
 
 nTrunc = 400; %number of steps to chop off beginning to avoid transients
 
 sindy_res = cell(length(windows),1);
 
-for wn = 1:length(windows)
+lambdas = 10.^(2 : 0.1 : 5.5);
+% lambdas = 10.^(-1:0.05:1);
+
+lambdaIdx = 6; %which lambda to integrate on (use positive or negative index)
+
+w = 4; %choose which window size to plot
+
+% for wn = 1:length(windows)
+for wn = w
     x = V_full_discr_all{wn}.';
 %     x = x_full_discr_all{wn}.'; %use raw data on Lorenz system
     x = x(1:nVars,nTrunc+1:end);
@@ -73,33 +84,67 @@ for wn = 1:length(windows)
     %% pool Data  (i.e., build library of nonlinear time series)
     Theta = poolData(x,n,polyorder,usesine);
     m = size(Theta,2);
+    
+    %% Normalize columns of Theta
+    meanNorm = 0;
+    ThetaNorms = zeros(size(Theta,2),1);
+    for tc = 1:size(Theta,2)
+        meanNorm = meanNorm + norm(Theta(:,tc));
+        ThetaNorms(tc) = norm(Theta(:,tc));
+        Theta(:,tc) = Theta(:,tc)/norm(Theta(:,tc));
+    end
+    meanNorm = meanNorm/size(Theta,2);
+    Theta = Theta * meanNorm; %
 
     %% compute Sparse regression: sequential least squares
-    lambdas = 10.^(0 : 0.1 : 3);
-%     lambdas = 10.^(-1:0.05:1);
-    coeff_cts = zeros(size(lambdas));
+
+    coeff_cts = zeros(length(lambdas),nVars);
     for lj = 1:length(lambdas)
         testLambda = lambdas(lj);
         Xi = sparsifyDynamics(Theta,dx,testLambda,n);
-        coeff_cts(lj) = nnz(Xi);
+        for li = 1:nVars
+            coeff_cts(lj,li) = nnz(Xi(:,li));
+        end
     end
+    
+    
     figure
-    semilogx(lambdas,coeff_cts,'*','LineWidth',2)
+    for li = 1:nVars
+        semilogx(lambdas,coeff_cts(:,li),'*','LineWidth',2,'DisplayName',['# Terms: x' num2str(li)])
+        hold on
+    end
     title(['Tuning \lambda (' num2str(windows(wn)) '-Step Window)']);
     xlabel('\lambda');
     ylabel('# Nonzero Coefficients');
+    legend
+    ylim([0 max(max(coeff_cts))+1])
     grid on
+    hold on
     
     % Neuron:
-%     lambda = lambdas(8); %2
-%     lambda = lambdas(12); %3
-%     lambda = lambdas(7); %4
+%     lambdaIdx = 8; %2
+%     lambdaIdx = 12; %3
+%     lambdaIdx = 7; %4
+   
     
     % Lorenz (Raw):
-    lambda = lambdas(5); %1
-%     lambda = lambdas(14); %3
+%     lambdaIdx = 5; %1
+%     lambdaIdx = 14; %3
 
+    if lambdaIdx > 0
+        lambda = lambdas(lambdaIdx);
+        cct = coeff_cts(lambdaIdx);
+    else
+        lambda = lambdas(end+lambdaIdx);
+        cct = coeff_cts(end+lambdaIdx);
+    end
+    
+    %highlight chosen lambda
+    plot([lambda lambda], [0 max(max(coeff_cts))+1],'k:','LineWidth',2,'DisplayName','Chosen \lambda');
+    hold off
+    
     Xi = sparsifyDynamics(Theta,dx,lambda,n);
+    Xi = Xi./repmat(ThetaNorms,1,nVars); %undo Theta normalization for coefficients
     
     sindy_res{wn}.Xi = Xi;
     sindy_res{wn}.x = x;
@@ -119,12 +164,9 @@ end
 
 %% FIGURES!!
 
-wn = 1; %choose which window size to plot
-
-
-tA = sindy_res{wn}.tspan;
-xA = sindy_res{wn}.x;
-Xi = sindy_res{wn}.Xi;
+tA = sindy_res{w}.tspan;
+xA = sindy_res{w}.x;
+Xi = sindy_res{w}.Xi;
 
 stringLib = libStringsFixed(nVars,polyorder,usesine).';
 stringLib = repmat(stringLib, 1, nVars);
@@ -136,6 +178,7 @@ for nd = 1:nVars
     for j = 1:length(coeffsUsed)
         disp([num2str(coeffsUsed(j)) ' ' stringLibUsed{j}]);
     end
+    disp(' ') %line break
 end
 
 % options = odeset('RelTol',1e-7,'AbsTol',1e-7*ones(1,n));
@@ -145,25 +188,30 @@ options = odeset('RelTol',1e-6);
 
 figure
 dtA = [0; diff(tA)];
-plot(xA(:,1),xA(:,2),'r.','LineWidth',.1);
+plot_xA = plot3(xA(:,1),xA(:,2),xA(:,3),'r','LineWidth',1.5);
 hold on
 dtB = [0; diff(tB)];
-plot(xB(:,1),xB(:,2),'k--','LineWidth',1.2);
+plot_xB = plot3(xB(:,1),xB(:,2),xB(:,3),'k','LineWidth',1.5);
+hold off
+plot_xA.Color(4) = 0.3; % opacity
+plot_xB.Color(4) = 0.3; % opacity
 xlabel('x_1','FontSize',13)
 ylabel('x_2','FontSize',13)
+zlabel('x_3','FontSize',13)
 l1 = legend('True','Identified');
+title('Manifolds: True vs. Identified')
 
-figure
-plot(tA,xA(:,1),'r.','LineWidth',.1)
-hold on
-plot(tA,xA(:,2),'b.','LineWidth',.1)
-plot(tB(1:10:end),xB(1:10:end,1),'k--','LineWidth',1.2)
-hold on
-plot(tB(1:10:end),xB(1:10:end,2),'k--','LineWidth',1.2)
-xlabel('Time')
-ylabel('State, x_k')
-legend('True x_1','True x_2','Identified')
-
+% figure
+% plot(tA,xA(:,1),'r','LineWidth',1.2)
+% hold on
+% plot(tA,xA(:,2),'r','LineWidth',1.2)
+% plot(tB(1:10:end),xB(1:10:end,1),'k','LineWidth',1.2)
+% hold on
+% plot(tB(1:10:end),xB(1:10:end,2),'k','LineWidth',1.2)
+% xlabel('Time')
+% ylabel('State, x_k')
+% legend('True x_1','True x_2','Identified x_1','Identified x_2')
+% title('Time Series: True vs. Identified')
 
 
 %% Plot Time Series

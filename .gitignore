@@ -10,5 +10,6 @@
 *.synctex.gz
 
 /kakearney-boundedline/*
+/imtsl-master/*
 
 lyarosenstein.m

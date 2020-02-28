@@ -18,7 +18,7 @@ opts = odeset('RelTol',1e-7);
 
 tspan = [0 2000];
 
-K_range = 0.05:0.05:0.7;
+K_range = [0.05:0.05:0.15, 0.16:0.01:0.25, 0.30:0.05:0.70];
 r_inf = zeros(size(K_range));
 
 for j = 1:length(K_range)
@@ -41,7 +41,11 @@ ylabel('|R|');
 tspan = [0 10000];
 % tspan = 0:0.0001:1000;
 % Kc = 0.35;
-K = 0.194;
+K = 0.175;
+% K = 0.05;
+hold on
+plot([K K],[0 1],'k:')
+hold off
 c = K/N;
 % W = omega.';
 % dPdt = @(P,W,c) W+c*sum(sin(meshgrid(P)-meshgrid(P)'),2);
@@ -75,15 +79,20 @@ plot(ps(:,1),ps(:,2),'r.')
 % figure
 % plot(T,abs(R))
 
-figure
-plot(T,phi)
+% figure
+% plot(T,cos(phi))
+% xlim([1000 1100])
 
-tStep = mean(diff(T));
+tStep = mean(diff(T))/2;
 nSteps = ceil(tspan(2)/tStep);
 tN = 0:tStep:tspan(2);
-tN = tN(1:end-1); %match to nSteps
+tN = tN(1:end); %match to nSteps
 
-h = interp1(T,phi,tN);
+h = interp1(T,cos(phi),tN); %enforce evenly spaced time steps
 t = tN;
+
+% figure
+% plot(t,h)
+% xlim([1000 1100])
 
 save('Kuramoto_sim_data.mat','h','t');

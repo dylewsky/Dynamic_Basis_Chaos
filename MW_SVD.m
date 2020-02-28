@@ -1,12 +1,16 @@
 clear variables; close all; clc
 
 % dataLabel = 'Kuramoto';
-% windows = [500 1000 1500]; %Kuramoto
+% windows = [10 50 100 250]; %Kuramoto
+% activeWindows = 2;
 
-dataLabel = 'Neuron';
-windows = [10 50 100 250 500]; %Neuron
+% dataLabel = 'Neuron';
+% windows = [10 50 100 250 500]; %Neuron
 
-rerun_SVD = 0; %if 0, just load SVD results from file
+% dataLabel = 'Neuron640';
+% windows = [10 50 100 250 500]; %Neuron640
+
+rerun_SVD = 1; %if 0, just load SVD results from file
 
 infile = [dataLabel '_sim_data.mat'];
 load(infile);
@@ -21,13 +25,13 @@ if global_meansub == 1
 end
 
 % windows = floor(10.^(1.25:0.5:2.75));
-stepSize = 5;
+stepSize = 1;
 
 maxSlide = floor((nSteps - min(windows))/stepSize);
 SVD_res = cell(length(windows),maxSlide);
 
 
-if rerun_SVD == 1
+if rerun_SVD == 0
 
     r = 3;
     
@@ -70,6 +74,7 @@ allStds = zeros(size(allMeans));
 b = zeros(sLength,1,length(windows));
 
 for n = 1:length(windows)
+% for n = activeWindows
     wSteps = windows(n);
     sRank = min(wSteps,size(h,1)); %number of modes retained by econ SVD
     nSlide = floor((nSteps - wSteps)/stepSize);
@@ -116,22 +121,117 @@ legend(string(windows),'Location','best');
 hold off
 title('SVD Spectra - Cumulative Sums')
 
+%% Correct for Spectral Crossings
+gapThresh = 4; % a (conservative) limit on how close the discrete SVs come in a "true" crossing
+
+for n = activeWindows
+    wSteps = windows(n);
+    nSlide = floor((nSteps - wSteps)/stepSize);
+    for k = 2:nSlide-1
+%         disp(k)
+%     for k = 13384
+        S1 = SVD_res{n,k-1}.S;
+        S2 = SVD_res{n,k}.S;
+        S3 = SVD_res{n,k+1}.S;
+        V2 = SVD_res{n,k}.V;
+        V3 = SVD_res{n,k+1}.V;
+        U3 = SVD_res{n,k+1}.U;
+        for j = 1:r-1
+            if S2(j)-S2(j+1) > gapThresh
+                continue 
+            end
+            if (S1(j) - 2*S2(j) + S3(j) <= 0) || (S1(j+1) - 2*S2(j+1) + S3(j+1) >= 0)
+                continue %SVs must be concave up and down, respectively
+            end
+            permNorms = zeros(2,4);
+            for modeOrder = 1:2
+                permCount = 0;
+                % SVD leaves a sign ambiguity in U & V which hasn't been
+                % corrected for yet, so must iterate through all possible
+                % sign/order combinations to find the right one
+                for relSign1 = 1:2 %sign toggle for mode 1
+                    for relSign2 = 1:2 %sign toggle for mode 2
+                        permCount = permCount + 1;
+                        %sign/order of window k are fixed
+                        V2_1 = V2(1+stepSize:end,j);
+                        V2_2 = V2(1+stepSize:end,j+1);
+                        %sign/order of window k+1 are permuted
+                        if modeOrder == 1
+                            V3_1 = V3(1:end-stepSize,j);
+                            V3_2 = V3(1:end-stepSize,j+1);
+                        else
+                            V3_1 = V3(1:end-stepSize,j+1);
+                            V3_2 = V3(1:end-stepSize,j);
+                        end
+                        V3_1 = V3_1 * (-1)^relSign1;
+                        V3_2 = V3_2 * (-1)^relSign2;
+                        permNorms(modeOrder,permCount) = norm( ...
+                            [norm(V3_1 - V2_1) norm(V3_2-V2_2)]);
+%                         figure
+%                         subplot(2,1,1)
+%                         plot(V2_1); hold on; plot(V2_2); hold off
+%                         title('V_1 & V_2: First Window')
+%                         subplot(2,1,2)
+%                         plot(V3_1); hold on; plot(V3_2); hold off
+%                         title('V_1 & V_2: First Window')
+                    end
+                end
+            end
+            [optOrder,~] = find(permNorms == min(min(permNorms)));
+            if optOrder == 2
+                S3([j j+1]) = S3([j+1 j]);
+                V3(:,[j j+1]) = V3(:,[j+1 j]);
+                U3(:,[j j+1]) = U3(:,[j+1 j]);
+                SVD_res{n,k+1}.S = S3;
+                SVD_res{n,k+1}.V = V3;
+                SVD_res{n,k+1}.U = U3;
+            end
+        end
+%             
+%             for jvc = 1:4
+%                 if mean(Vcomp(:,jvc)) < 0
+%                     % Overall sign of each window's V is arbitrary, will be
+%                     % corrected later. For now, just force ascending
+%                     % orientation
+%                     if abs(mean(Vcomp(:,jvc))) > 0
+%                     Vcomp(:,jvc) = -Vcomp(:,jvc);
+%                 end
+%             end
+%             if norm([norm(Vcomp(:,3)-Vcomp(:,1)), norm(Vcomp(:,4)-Vcomp(:,2))]) > ...
+%                     norm([norm(Vcomp(:,4)-Vcomp(:,1)), norm(Vcomp(:,3)-Vcomp(:,2))])
+%                 S3([j j+1]) = S3([j+1 j]);
+%                 V3(:,[j j+1]) = V3(:,[j+1 j]);
+%                 U3(:,[j j+1]) = U3(:,[j+1 j]);
+%                 disp(['Swapping modes ' num2str(j) ' and ' num2str(j+1) ' on window ' num2str(k)])
+%             end
+    end
+end
+clear('S3','V3','U3','jvc','optOrder','permNorms','permCount','relSign1','relSign2','modeOrder');
+
 %% Correct for mode sign flips
 flipRegister = zeros(nSlide,r); %track where sign flips have taken place
 cumFlip = ones(1,r); %cumulative sign change for each mode
-for n = 1:length(windows)
+moving_avg_window = 5; % # steps to take average over
+flip_bias = 1; % >1 makes it more likely to apply a sign flip, <1 makes it more likely to keep as-is
+% for n = 1:length(windows)
+for n = activeWindows
     wSteps = windows(n);
     nSlide = floor((nSteps - wSteps)/stepSize);
     V_old = SVD_res{n,1}.V;
-    U_old = SVD_res{n,1}.U; 
+    V_hist = repmat(SVD_res{n,1}.V,1,1,moving_avg_window); %seed history with first time point
+%     U_old = SVD_res{n,1}.U; 
+    U_hist = repmat(SVD_res{n,1}.U,1,1,moving_avg_window);
     for k = 2:nSlide
         V_wind = SVD_res{n,k}.V;
         V_wind = V_wind.*repmat(cumFlip,wSteps,1); %apply cumulative flip up to this point
         U_wind = SVD_res{n,k}.U;
         U_wind = U_wind.*repmat(cumFlip,size(h,1),1);
-        updateRes = 0;
+        U_movAvg = squeeze(mean(U_hist,3));
+        V_movAvg = squeeze(mean(V_hist,3));
         for j = 1:r
-            if norm(U_wind(:,j) - U_old(:,j)) > norm(U_wind(:,j) + U_old(:,j))
+%             if norm(U_wind(:,j) - U_movAvg(:,j)) > flip_bias*norm(U_wind(:,j) + U_movAvg(:,j))
+            if norm(V_wind(1:end-stepSize,j) - V_old(1+stepSize:end,j)) > flip_bias*norm(V_wind(1:end-stepSize,j) + V_old(1+stepSize:end,j))
+%             if (norm(V_wind(:,j) - V_movAvg(:,j)) > flip_bias*norm(V_wind(:,j) + V_movAvg(:,j))) && (norm(U_movAvg(:,j) - U_movAvg(:,j)) > flip_bias*norm(U_wind(:,j) + U_movAvg(:,j)))
                 U_wind(:,j) = -U_wind(:,j);
                 V_wind(:,j) = -V_wind(:,j);
                 flipRegister(k,j) = 1;
@@ -141,30 +241,109 @@ for n = 1:length(windows)
         end
         SVD_res{n,k}.V = V_wind;
         SVD_res{n,k}.U = U_wind;
+        V_hist = cat(3,V_hist,V_wind);
+        V_hist = V_hist(:,:,2:end);
+        U_hist = cat(3,U_hist,U_wind);
+        U_hist = U_hist(:,:,2:end);
         V_old = V_wind;
-        U_old = U_wind;
+%         U_old = U_wind;
     end
 end
+
+%% Apply Derivative Comparison on V
+cumFlip = ones(1,r); %cumulative sign change for each mode (reset for this 2nd pass)
+dv_abs_thresh = 1;
+dV = zeros(r,nSlide);
+% for n = 1:length(windows)
+for n = activeWindows
+    wSteps = windows(n);
+    deltaT = t(wSteps+1)-t(1);
+    nSlide = floor((nSteps - wSteps)/stepSize);
+    for k = 2:nSlide-1
+        U_1 = SVD_res{n,k-1}.U;
+        U_2 = SVD_res{n,k}.U;
+        U_3 = SVD_res{n,k+1}.U;
+        U_2 = U_2.*repmat(cumFlip,size(h,1),1); %apply cumulative flip up to this point
+        U_3 = U_3.*repmat(cumFlip,size(h,1),1); %U_1 already has it baked in
+        V_1 = SVD_res{n,k-1}.V;
+        V_2 = SVD_res{n,k}.V;
+        V_3 = SVD_res{n,k+1}.V;
+        V_2 = V_2.*repmat(cumFlip,wSteps,1);
+        V_3 = V_3.*repmat(cumFlip,wSteps,1);
+        for j = 1:r
+            dV_1 = (V_1(end,j)-V_1(1,j))/deltaT;
+            dV_2 = (V_2(end,j)-V_2(1,j))/deltaT;
+            dV(j,k) = abs(dV_2-dV_1);
+        end
+%         SVD_res{n,k}.V = V_2;
+%         SVD_res{n,k}.U = U_2;
+    end
+    figure
+    plot(dV.')
+%     hold on
+%     plot([1 nSlide],[Upp_thresh Upp_thresh],'k--')
+%     hold off
+end
+
+%% Apply 2nd-Derivative Thresholding on U Time Series
+cumFlip = ones(1,r); %cumulative sign change for each mode (reset for this 2nd pass)
+Upp_thresh = 2e-3 * ones(length(windows),1);
+% for n = 1:length(windows)
+for n = activeWindows
+    Upp = zeros(r,nSlide); %store norm of 2nd derivative of U modes
+    wSteps = windows(n);
+    deltaT = t(wSteps+1)-t(1);
+    nSlide = floor((nSteps - wSteps)/stepSize);
+    for k = 2:nSlide-1
+        U_1 = SVD_res{n,k-1}.U;
+        U_2 = SVD_res{n,k}.U;
+        U_3 = SVD_res{n,k+1}.U;
+        U_2 = U_2.*repmat(cumFlip,size(h,1),1); %apply cumulative flip up to this point
+        U_3 = U_3.*repmat(cumFlip,size(h,1),1); %U_1 already has it baked in
+        V_2 = SVD_res{n,k}.V;
+        V_2 = V_2.*repmat(cumFlip,wSteps,1);
+        for j = 1:r
+            Upp(j,k) = norm((1/deltaT^2)*(U_1(:,j) - 2*U_2(:,j) + U_3(:,j)));
+%             if Upp(j,k) > Upp_thresh(n)
+%                 cumFlip(j) = -cumFlip(j);
+%                 U_2(:,j) = -U_2(:,j);
+%                 V_2(:,j) = -V_2(:,j);
+%             end
+        end
+        SVD_res{n,k}.V = V_2;
+        SVD_res{n,k}.U = U_2;
+    end
+    figure
+    plot(Upp.')
+    hold on
+    plot([1 nSlide],[Upp_thresh Upp_thresh],'k--')
+    hold off
+end
+
 %% Moving Window SVD Reconstruction
 
 % tBounds = [1 2]; %default plot limits
-tBounds = [t(1000) t(3000)];
+tBounds = [t(1000) t(end)];
 
 h_recons = cell(length(windows),1); 
 V_full_all = cell(length(windows),1);
 V_full_discr_all = cell(length(windows),1);
+V_full_discr_all_b = cell(length(windows),1);
+
 U_full_discr_all = cell(length(windows),1);
 S_discr_all = cell(length(windows),1);
 t_discr_all = cell(length(windows),1);
 allModes = cell(length(windows),1);
 windMids_all = cell(length(windows),1);
-for n = 1:length(windows)
+% for n = 1:length(windows)
+for n = activeWindows
     wSteps = windows(n);
     nSlide = floor((nSteps - wSteps)/stepSize);
     
     h_recon = zeros(size(h));
     V_full = zeros(r,length(t)); %moving weighted average of mode projections
     V_full_discr = zeros(nSlide,r); %mean values of mode projections for each window
+    V_full_discr_b = zeros(size(V_full_discr));
     U_full_discr = zeros(nSlide,r,size(h,1)); %window #, mode #, mode vector
     t_discr = zeros(1,nSlide);
     S_discr = zeros(nSlide,r);
@@ -192,6 +371,7 @@ for n = 1:length(windows)
         wModes(k,:,:) = U_wind.';
 %         V_full_discr(k,:) = mean(V_wind,1);
         V_full_discr(k,:) = V_wind(end,:);
+        V_full_discr_b(k,:) = V_wind(1,:);
         U_full_discr(k,:,:) = U_wind.';
         S_discr(k,:) = S_wind;
         wSVs(k,:) = S_wind;
@@ -206,6 +386,7 @@ for n = 1:length(windows)
     t_discr_all{n} = t_discr;
     V_full_all{n} = V_full;
     V_full_discr_all{n} = V_full_discr;
+    V_full_discr_all_b{n} = V_full_discr_b;
     U_full_discr_all{n} = U_full_discr;
     S_discr_all{n} = S_discr;
     allModes{n} = wModes;
@@ -224,16 +405,16 @@ for n = 1:length(windows)
     subplot(2,2,2)
 %     plot(t,V_full)
 %     hold on
-    plot(windMids*(t(2)-t(1)),V_full_discr,'o-','MarkerSize',1)
+    plot(t_discr,V_full_discr,'o-','MarkerSize',1)
     title('V(end) from each window')
     xlim(tBounds);
     subplot(2,2,3)
     % plot top r modes' first coordinates over time
-    plot(windMids*(t(2)-t(1)), squeeze(wModes(:,1:r,1)))
+    plot(t_discr, squeeze(wModes(:,1:r,1)))
     title('1st Coord. of Top 3 U vectors')
     xlim(tBounds);
     subplot(2,2,4)
-    plot(windMids*(t(2)-t(1)),wSVs)
+    plot(t_discr,wSVs)
     title('Singular Values over Time');
     xlim(tBounds);
 end
@@ -266,7 +447,7 @@ dims = randperm(size(h,1),3); %pick some dimensions to display
 tailLength = 25;
 sAlpha = 0.1;
 figure('Position',[100 200 1200 400])
-n = 1; %which window size to show
+n = 2; %which window size to show
 wSteps = windows(n);
 windMids = windMids_all{n};
 dispModes = allModes{n}(:,:,dims); %step #, mode #, mode coord
@@ -427,10 +608,36 @@ for n = 1:length(windows)
     end
 end
 
+figure('Position',[50 50 1200 640])
+for n = 1:length(windows)
+    V = V_full_discr_all_b{n};
+    if weight_sigma == 1
+        S = S_discr_all{n};
+        V = V.*S;
+    end
+    t = t_discr_all{n};
+    for j = 1:r
+        subplot(r,1,j)
+%         plot(t,zeros(size(t)),'Color',[0.9 0.9 0.9],'LineWidth',0.1)
+%         hold on
+        plot(t,V(:,j),'DisplayName',[num2str(windows(n)) '-step window'])
+        hold on
+        legend('Location','eastoutside');
+        ylabel(['SVD Mode ' num2str(j)])
+    end
+end
+
+%% Plot Attractor
+n = 2;
+V = V_full_discr_all{n};
+figure
+plot3(V(:,1),V(:,2),V(:,3));
+
 %% Visualize Mode Coordinates Over Time
-someDims = randi(size(h,1),3,1);
+someDims = randperm(size(h,1));
+someDims = someDims(1:3);
 % for n = 1:length(windows)
-for n = 4
+for n = 2
     U = U_full_discr_all{n};
     t = t_discr_all{n};
     figure
