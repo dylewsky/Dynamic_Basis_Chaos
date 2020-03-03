@@ -4,3 +4,6 @@ Exploration of methods for analyzing chaotic dynamics by projecting onto local l
 
 Some plots use the boundedline package available here: https://github.com/kakearney/boundedline-pkg
 
+
+[![Chaos in a Dynamic Basis Demo](https://i.imgur.com/EEq0wp5.png)](https://youtu.be/tyhj8CF_n6I)
+
